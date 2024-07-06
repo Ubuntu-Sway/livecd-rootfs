@@ -1,0 +1,9 @@
+#!/bin/bash -ex
+
+. config/functions
+
+if [ -f binary/boot/disk-uefi.ext4 ]; then
+    convert_to_qcow2 binary/boot/disk-uefi.ext4 livecd.ubuntu-cpc.img
+elif [ -f binary/boot/disk.ext4 ]; then
+    convert_to_qcow2 binary/boot/disk.ext4 livecd.ubuntu-cpc.img
+fi

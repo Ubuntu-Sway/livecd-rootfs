@@ -1,0 +1,131 @@
+#!/bin/sh
+
+case $PASS in
+    ubuntu-server-minimal.ubuntu-server.installer.generic*.netboot)
+        ;;
+    *)
+        exit 0
+        ;;
+esac
+
+set -eux
+
+# Extract the flavor from the pass name
+flavor=${PASS%%.netboot}
+flavor=${flavor##*.}
+
+PROJECT=$PROJECT${SUBARCH:+-$SUBARCH}
+
+KERNEL=${PWD}/livecd.${PROJECT}.kernel-$flavor
+INITRD=${PWD}/livecd.${PROJECT}.initrd-$flavor
+
+mkdir -p tarball/$ARCH
+
+case $ARCH in
+    s390x)
+        cp $INITRD tarball/$ARCH/initrd.ubuntu
+        cp $KERNEL tarball/$ARCH/linux.ubuntu
+        ;;
+
+    *)
+        cp $INITRD tarball/$ARCH/initrd
+        cp $KERNEL tarball/$ARCH/linux
+        ;;
+esac
+
+case $ARCH in
+    amd64)
+        mv chroot/usr/lib/PXELINUX/pxelinux.0                          tarball/amd64/pxelinux.0
+        mv chroot/usr/lib/syslinux/modules/bios/ldlinux.c32            tarball/amd64/ldlinux.c32
+	# For shim we're now using alternatives
+        if [ -e chroot/usr/lib/shim/shimx64.efi.signed.latest ]; then
+            mv chroot/usr/lib/shim/shimx64.efi.signed.latest           tarball/amd64/bootx64.efi
+        else
+            mv chroot/usr/lib/shim/shimx64.efi.signed                  tarball/amd64/bootx64.efi
+        fi
+        mv chroot/usr/lib/grub/x86_64-efi-signed/grubnetx64.efi.signed tarball/amd64/grubx64.efi
+
+        mkdir tarball/amd64/grub tarball/amd64/pxelinux.cfg
+        cat > tarball/amd64/grub/grub.cfg.in <<EOF
+menuentry "Install Ubuntu Server" {
+        set gfxpayload=keep
+        linux   linux iso-url=#ISOURL# ip=dhcp ---
+        initrd  initrd
+}
+EOF
+        cat > tarball/amd64/pxelinux.cfg/default.in <<EOF
+DEFAULT install
+LABEL install
+  KERNEL linux
+  INITRD initrd
+  APPEND root=/dev/ram0 ramdisk_size=1500000 ip=dhcp iso-url=#ISOURL# ---
+EOF
+        ;;
+
+    arm64)
+	# For shim we're now using alternatives
+        if [ -e chroot/usr/lib/shim/shimaa64.efi.signed.latest ]; then
+            mv chroot/usr/lib/shim/shimaa64.efi.signed.latest          tarball/arm64/bootaa64.efi
+        else
+            mv chroot/usr/lib/shim/shimaa64.efi.signed                 tarball/arm64/bootaa64.efi
+        fi
+        mv chroot/usr/lib/grub/arm64-efi-signed/grubnetaa64.efi.signed tarball/arm64/grubaa64.efi
+
+        mkdir tarball/arm64/grub
+        cat > tarball/arm64/grub/grub.cfg.in <<EOF
+menuentry "Install Ubuntu Server" {
+        set gfxpayload=keep
+        linux   linux iso-url=#ISOURL# ip=dhcp ---
+        initrd  initrd
+}
+EOF
+        ;;
+
+    s390x)
+        cat > tarball/s390x/ubuntu.exec <<EOF
+/* REXX EXEC TO IPL Ubuntu for        */
+/* z Systems FROM THE VM READER.      */
+/*                                    */
+'CP CLOSE RDR'
+'PURGE RDR ALL'
+'SPOOL PUNCH * RDR'
+'PUNCH KERNEL    UBUNTU   * (NOHEADER'
+'PUNCH PARMFILE  UBUNTU   * (NOHEADER'
+'PUNCH INITRD    UBUNTU   * (NOHEADER'
+'CHANGE RDR ALL KEEP NOHOLD'
+'CP IPL 000C CLEAR'
+EOF
+        cat > tarball/s390x/ubuntu.ins <<EOF
+* Ubuntu for IBM Z (default kernel)
+linux.ubuntu 0x00000000
+initrd.off 0x0001040c
+initrd.siz 0x00010414
+parmfile.ubuntu 0x00010480
+initrd.ubuntu 0x01000000
+EOF
+        cat > tarball/s390x/parmfile.ubuntu.in <<EOF
+iso-url=#ISOURL# ---
+EOF
+        perl -e "print pack('N', 0x1000000)" > tarball/s390x/initrd.off
+        perl -e "print pack('N', -s 'tarball/s390x/initrd.ubuntu')" > tarball/s390x/initrd.siz
+        cat > tarball/s390x/kvm.cfg.in <<EOF
+DEFAULT install
+LABEL install
+  KERNEL linux.ubuntu
+  INITRD initrd.ubuntu
+  APPEND ip=dhcp iso-url=#ISOURL# ---
+EOF
+        cat > tarball/s390x/dpm.cfg.in <<EOF
+PROMPT 1
+DEFAULT install
+TIMEOUT 1
+LABEL install
+  kernel=linux.ubuntu
+  initrd=initrd.ubuntu
+  append=ip=dhcp iso-url=#ISOURL# ---
+EOF
+        ;;
+esac
+
+tar -C tarball -czf livecd.${PROJECT}.netboot.tar.gz .
+rm -rf tarball

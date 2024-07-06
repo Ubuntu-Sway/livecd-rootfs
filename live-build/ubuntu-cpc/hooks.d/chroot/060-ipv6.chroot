@@ -1,0 +1,11 @@
+#!/bin/bash
+#
+# Disable IPv6 privacy extensions
+#
+
+cat << EOF > /etc/sysctl.d/99-cloudimg-ipv6.conf
+# Written by the Cloud Image build process
+# See https://bugs.launchpad.net/ubuntu/+source/procps/+bug/1068756
+net.ipv6.conf.all.use_tempaddr = 0
+net.ipv6.conf.default.use_tempaddr = 0
+EOF

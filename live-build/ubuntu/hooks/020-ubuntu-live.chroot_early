@@ -1,0 +1,20 @@
+#! /bin/sh
+
+set -eu
+
+case ${PASS:-} in
+    *.live)
+        ;;
+    *)
+        exit 0
+        ;;
+esac
+
+mkdir -p /etc/initramfs-tools/conf.d/
+cat <<EOF > /etc/initramfs-tools/conf.d/default-layer.conf
+LAYERFS_PATH=${PASS}.squashfs
+EOF
+
+if which glib-compile-schemas >/dev/null 2>&1; then
+	glib-compile-schemas /usr/share/glib-2.0/schemas/
+fi
